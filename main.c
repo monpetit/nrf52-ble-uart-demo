@@ -72,6 +72,24 @@ static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;
 static ble_uuid_t                       m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};  /**< Universally unique service identifier. */
 
 
+void ble_gap_evt_connected_callback(void);      // BLE 연결이 이루어질 때 콜백
+void ble_gap_evt_disconnected_callback(void);   // BLE 연결이 끊어질 때 콜백
+
+/*------------------------------------*/
+/* user timer                         */
+/*------------------------------------*/
+
+#define BSP_MS_TO_TICK(MS) (APP_TIMER_TICKS(100, APP_TIMER_PRESCALER) * (MS / 100))
+#define USER_TIMER_INTERVAL_MS      (250)
+
+uint32_t user_timer_init(void);
+
+APP_TIMER_DEF(user_timer_id);
+static void user_timer_handler(void * p_context);
+
+
+
+
 /**@brief Function for assert macro callback.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -266,12 +284,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
         APP_ERROR_CHECK(err_code);
         m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+        ble_gap_evt_connected_callback();
         break;
 
     case BLE_GAP_EVT_DISCONNECTED:
         err_code = bsp_indication_set(BSP_INDICATE_IDLE);
         APP_ERROR_CHECK(err_code);
         m_conn_handle = BLE_CONN_HANDLE_INVALID;
+        ble_gap_evt_disconnected_callback();
         break;
 
     case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
@@ -516,6 +536,7 @@ int main(void)
     services_init();
     advertising_init();
     conn_params_init();
+    user_timer_init();
 
     printf("%s", start_string);
 
@@ -527,6 +548,49 @@ int main(void)
         power_manage();
     }
 }
+
+
+uint32_t user_timer_init(void)
+{
+    uint32_t err_code = NRF_SUCCESS;
+
+    err_code = app_timer_create(&user_timer_id, APP_TIMER_MODE_REPEATED, user_timer_handler);
+    APP_ERROR_CHECK(err_code);
+    err_code = app_timer_start(user_timer_id, BSP_MS_TO_TICK(USER_TIMER_INTERVAL_MS), NULL);
+    APP_ERROR_CHECK(err_code);
+
+    return err_code;
+}
+
+
+// APP TIMER PERIODIC CALLBACK
+static void user_timer_handler(void * p_context)
+{
+    static char txbuffer[20] = {0, };
+    static int count = 0;
+    if (m_conn_handle != BLE_CONN_HANDLE_INVALID) {
+        sprintf(txbuffer, "count = %d", count++);
+        ble_nus_string_send(&m_nus, (uint8_t*)txbuffer, strlen(txbuffer));
+        nrf_gpio_pin_toggle(BSP_LED_2);
+    }
+}
+
+
+// BLE GAP ON CONNECTION CALLBACK
+void ble_gap_evt_connected_callback(void)
+{
+    puts("[BLE GAP EVENT] CONNECTED!");
+    // err_code = app_timer_start(user_timer_id, BSP_MS_TO_TICK(USER_TIMER_INTERVAL_MS), NULL);
+}
+
+
+// BLE GAP ON DISCONNECTION CALLBACK
+void ble_gap_evt_disconnected_callback(void)
+{
+    puts("[BLE GAP EVENT] DISCONNECTED!");
+    // app_timer_stop(user_timer_id);
+}
+
 
 
 /**
