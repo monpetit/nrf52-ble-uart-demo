@@ -38,6 +38,9 @@
 #include "bsp.h"
 #include "bsp_btn_ble.h"
 
+#include "spi_module.h"
+#include "ds3234_rtc.h"
+
 #define IS_SRVC_CHANGED_CHARACT_PRESENT 1                                           /**< Include the service_changed characteristic. If not enabled, the server's database cannot be changed for the lifetime of the device. */
 
 #define DEVICE_NAME                     "Nordic_UART"                               /**< Name of device. Will be included in the advertising data. */
@@ -80,13 +83,14 @@ void ble_gap_evt_disconnected_callback(void);   // BLE 연결이 끊어질 때 �
 /*------------------------------------*/
 
 #define BSP_MS_TO_TICK(MS) (APP_TIMER_TICKS(100, APP_TIMER_PRESCALER) * (MS / 100))
-#define USER_TIMER_INTERVAL_MS      (250)
+#define USER_TIMER_INTERVAL_MS      (1000)
 
 uint32_t user_timer_init(void);
 
 APP_TIMER_DEF(user_timer_id);
 static void user_timer_handler(void * p_context);
 
+volatile bool get_time_flag = false;
 
 
 
@@ -537,6 +541,7 @@ int main(void)
     advertising_init();
     conn_params_init();
     user_timer_init();
+    spi_init();
 
     printf("%s", start_string);
 
@@ -545,6 +550,10 @@ int main(void)
 
     // Enter main loop.
     for (;;) {
+        if (get_time_flag) {
+            get_time_flag = false;
+            ds3234_gettime();
+        }
         power_manage();
     }
 }
@@ -572,6 +581,8 @@ static void user_timer_handler(void * p_context)
         sprintf(txbuffer, "count = %d", count++);
         ble_nus_string_send(&m_nus, (uint8_t*)txbuffer, strlen(txbuffer));
         nrf_gpio_pin_toggle(BSP_LED_2);
+
+        get_time_flag = true;
     }
 }
 
